@@ -24,13 +24,7 @@ function App() {
       });
   }, []);
 
-  return (
-    <main>
-      <h1>MSE 433 Monorepo</h1>
-      <p>Frontend + Backend are connected.</p>
-      <p>Backend status: {status}</p>
-    </main>
-  );
+  return null;
 }
 
 export default App;

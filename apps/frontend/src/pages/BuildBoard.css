@@ -1,0 +1,203 @@
+.board-container {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(70, 130, 180, 0.3);
+  border-radius: 1rem;
+  overflow: auto;
+}
+
+.board {
+  position: relative;
+  width: 90vw;
+  max-width: 1200px;
+  aspect-ratio: 1;
+  max-height: 90vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.no-data {
+  color: white;
+  font-size: 1.2rem;
+  text-align: center;
+  padding: 2rem;
+}
+
+/* Hexagon Tile Styling */
+.hex-tile {
+  position: absolute;
+  width: 7vw;
+  height: 7vw;
+  max-width: 90px;
+  max-height: 90px;
+  min-width: 50px;
+  min-height: 50px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  /* Offset coordinate system for proper Catan hexagon layout */
+  left: calc(var(--hex-x) * 7.2vw + 50%);
+  top: calc(var(--hex-y) * 6.2vw + 50%);
+  transform: translate(-50%, -50%);
+}
+
+.hex-tile:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  z-index: 10;
+}
+
+.hex-inner {
+  width: 100%;
+  height: 100%;
+  background-color: var(--hex-color);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.3);
+  position: relative;
+  filter: drop-shadow(2px 2px 3px rgba(0, 0, 0, 0.2));
+}
+
+.hex-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  font-weight: bold;
+  color: white;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.6);
+  gap: 0.4rem;
+}
+
+.resource-name {
+  font-size: clamp(0.5rem, 1.2vw, 0.9rem);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.dice-number {
+  font-size: clamp(1rem, 2.5vw, 1.8rem);
+  font-weight: bold;
+  background: rgba(255, 255, 255, 0.95);
+  color: #333;
+  width: clamp(20px, 4.5vw, 32px);
+  height: clamp(20px, 4.5vw, 32px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  font-family: 'Arial', sans-serif;
+}
+
+.tile-add-icon {
+  font-size: clamp(1.5rem, 3vw, 2.5rem);
+  color: rgba(100, 100, 100, 0.6);
+}
+
+.hex-tooltip {
+  position: absolute;
+  bottom: -70px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.95);
+  color: white;
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  z-index: 20;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.hex-tooltip div {
+  margin: 0.25rem 0;
+}
+
+.board-controls {
+  display: flex;
+  gap: 1rem;
+  padding: 2rem;
+  justify-content: center;
+}
+
+.btn {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-export {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-export:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-clear {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.btn-clear:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .hex-tile {
+    left: calc((var(--hex-x) - var(--hex-y) * 0.5) * 7vw + 38vw);
+    top: calc(var(--hex-y) * 6vw + 4vw);
+  }
+}
+
+@media (max-width: 768px) {
+  .board-container {
+    padding: 1rem;
+  }
+
+  .board {
+    width: 95vw;
+    max-height: 95vh;
+  }
+
+  .hex-tile {
+    left: calc((var(--hex-x) - var(--hex-y) * 0.5) * 6.8vw + 37vw);
+    top: calc(var(--hex-y) * 5.8vw + 3vw);
+  }
+
+  .board-controls {
+    flex-direction: column;
+    padding: 1rem;
+  }
+
+  .btn {
+    width: 100%;
+  }
+}
