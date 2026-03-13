@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 function App() {
   const [status, setStatus] = useState('checking...');
