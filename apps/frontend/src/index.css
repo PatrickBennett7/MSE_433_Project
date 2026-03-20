@@ -36,7 +36,7 @@ h1 {
   justify-content: space-between;
   align-items: center;
   padding: 1rem 2rem;
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.22);
   backdrop-filter: blur(10px);
   border-bottom: 2px solid rgba(255, 255, 255, 0.2);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -60,11 +60,13 @@ h1 {
 .navbar-links a {
   color: white;
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 1rem;
   transition: all 0.3s ease;
   padding: 0.5rem 1rem;
   border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .navbar-links a:hover {
@@ -72,25 +74,7 @@ h1 {
   transform: translateY(-2px);
 }
 
-.navbar-profile {
-  display: flex;
-  align-items: center;
-}
-
-.navbar-profile a {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  padding: 0.5rem;
-}
-
-.navbar-profile a:hover {
-  transform: scale(1.2);
-}
-
-.navbar-profile-icon {
-  font-size: 1.5rem;
+.navbar-links a:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
 }

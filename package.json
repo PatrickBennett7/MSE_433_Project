@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@10.23.0",
+  "engines": {
+    "node": ">=20.19.0 <21 || >=22.12.0"
+  },
   "scripts": {
     "dev": "concurrently -n frontend,backend -c cyan,green \"pnpm dev:frontend\" \"pnpm dev:backend\"",
     "dev:frontend": "pnpm --filter @mse/frontend dev",

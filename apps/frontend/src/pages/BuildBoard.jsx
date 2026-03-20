@@ -1,19 +1,32 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { IoAdd } from 'react-icons/io5';
 import TileForm from '../components/TileForm';
 import './BuildBoard.css';
 
+const RESOURCE_NAME_ALIASES = {
+  Forest: 'Wood',
+  Wool: 'Sheep',
+  Grain: 'Wheat',
+};
+
+const normalizeResourceName = (resource) => {
+  if (!resource) return null;
+  const normalized = `${resource}`.trim();
+  return RESOURCE_NAME_ALIASES[normalized] || normalized;
+};
+
 // Resource type colors - matching Catan board colors
 const RESOURCE_COLORS = {
   'Desert': '#fbb17c',      // Brown/Orange
-  'Wool': '#9ACD32',        // Yellow-Green
-  'Grain': '#FFD700',       // Golden Yellow
-  'Forest': '#0c6300',      // Dark Green
+  'Sheep': '#9ACD32',       // Yellow-Green
+  'Wheat': '#FFD700',       // Golden Yellow
+  'Wood': '#0c6300',        // Dark Green
   'Ore': '#383838',         // Grey
   'Brick': '#da450a',       // Orange-Red
 };
 
-const RESOURCE_TYPES = ['Desert', 'Wool', 'Grain', 'Forest', 'Ore', 'Brick'];
+const RESOURCE_TYPES = ['Desert', 'Sheep', 'Wheat', 'Wood', 'Ore', 'Brick'];
 const TILE_POSITIONS = [
   // Top row (y=2)
   { x: -2, y: 2 },
@@ -43,6 +56,7 @@ const TILE_POSITIONS = [
 
 const STORAGE_KEY = 'catan_board_config';
 const PLACEMENT_STORAGE_KEY = 'catan_placement_state_v1';
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
 const getBoardSignature = (tiles) => {
   // Keep it stable + compact; order is stable because TILE_POSITIONS is stable.
@@ -54,6 +68,7 @@ const getBoardSignature = (tiles) => {
 const PLACEMENT_ORDER = [1, 2, 3, 4, 4, 3, 2, 1];
 
 const BuildBoard = () => {
+  const navigate = useNavigate();
   const [tiles, setTiles] = useState(
     TILE_POSITIONS.map((pos) => ({
       ...pos,
@@ -74,12 +89,14 @@ const BuildBoard = () => {
   const [placedSettlements, setPlacedSettlements] = useState([]); // [{placementIndex, player, cornerId, anchorTileX, anchorTileY, cornerIndex, xyz, label}]
   const [selectedSettlement, setSelectedSettlement] = useState(null); // selection for the current user's turn
   const [placementBoardSignature, setPlacementBoardSignature] = useState(null);
+  const [selectedModel, setSelectedModel] = useState('optimization'); // 'optimization' or 'historical'
+  const [modelInfo, setModelInfo] = useState(null); // Info about the selected model
 
-  // Resource limits: Forest, Wool, Grain, Ore, Brick, Desert
+  // Resource limits: Wood, Sheep, Wheat, Ore, Brick, Desert
   const RESOURCE_LIMITS = {
-    'Forest': 4,
-    'Wool': 4,
-    'Grain': 4,
+    'Wood': 4,
+    'Sheep': 4,
+    'Wheat': 4,
     'Ore': 3,
     'Brick': 3,
     'Desert': 1,
@@ -101,15 +118,18 @@ const BuildBoard = () => {
 
   const getResourceCounts = () => {
     const counts = {
-      'Forest': 0,
-      'Wool': 0,
-      'Grain': 0,
+      'Wood': 0,
+      'Sheep': 0,
+      'Wheat': 0,
       'Ore': 0,
       'Brick': 0,
       'Desert': 0,
     };
     tiles.forEach((tile) => {
-      if (tile.type) counts[tile.type]++;
+      const normalizedType = normalizeResourceName(tile.type);
+      if (normalizedType && counts[normalizedType] !== undefined) {
+        counts[normalizedType]++;
+      }
     });
     return counts;
   };
@@ -177,7 +197,7 @@ const BuildBoard = () => {
         // Merge loaded data with tile positions to ensure positions are preserved
         const mergedTiles = TILE_POSITIONS.map((pos, index) => ({
           ...pos,
-          type: loadedData[index]?.type || null,
+          type: normalizeResourceName(loadedData[index]?.type) || null,
           diceNumber: loadedData[index]?.diceNumber || null,
         }));
         setTiles(mergedTiles);
@@ -294,6 +314,7 @@ const BuildBoard = () => {
     setAnalysisVertices([]);
     setVertexAdjacency({});
     setSelectedSettlement(null);
+    setModelInfo(null);
     // Start a fresh placement run for this analysis
     setPlacementBoardSignature(signature);
     setPlacedSettlements([]);
@@ -302,7 +323,10 @@ const BuildBoard = () => {
     try {
       const boardCSV = serializeBoardToCSV();
       
-      const response = await fetch('http://localhost:8000/api/analyze-board', {
+      // Add model parameter to query string
+      const queryParams = new URLSearchParams({ model: selectedModel });
+      
+      const response = await fetch(`${apiBaseUrl}/api/analyze-board?${queryParams.toString()}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'text/csv',
@@ -316,44 +340,89 @@ const BuildBoard = () => {
       
       const result = await response.json();
       setAnalysisResult(result);
+      setModelInfo(result.model_info || null);
 
-      if (Array.isArray(result.vertices)) {
-        setAnalysisVertices(
-          result.vertices.map((opt) => ({
-            cornerId: opt.corner_id,
-            anchorTileX: opt.anchor_tile_x,
-            anchorTileY: opt.anchor_tile_y,
-            cornerIndex: opt.corner_index,
-            xyz: { x: opt.x, y: opt.y, z: opt.z },
-            tiles: opt.tiles,
-            label: opt.label,
-          }))
-        );
-      }
-      if (result.vertex_adjacency && typeof result.vertex_adjacency === 'object') {
-        setVertexAdjacency(result.vertex_adjacency);
-      }
-      
-      const sourceCandidates = Array.isArray(result.candidates) ? result.candidates : [];
+      // Handle different response formats based on model type
+      if (selectedModel === 'historical') {
+        // Historical model returns different format
+        if (Array.isArray(result.candidates)) {
+          setAnalysisCandidates(
+            result.candidates.map((opt, idx) => ({
+              globalRank: idx + 1,
+              cornerId: opt.corner_id,
+              anchorTileX: opt.anchor_tile_x,
+              anchorTileY: opt.anchor_tile_y,
+              cornerIndex: opt.corner_index,
+              xyz: { x: opt.x, y: opt.y, z: opt.z },
+              resources: opt.resources,
+              diceNumbers: opt.dice_numbers,
+              score: opt.score,
+              confidence: opt.confidence,
+              label: opt.label,
+              model_type: 'historical'
+            }))
+          );
+        }
+        // Also set analysis vertices for dot rendering
+        if (Array.isArray(result.vertices)) {
+          setAnalysisVertices(
+            result.vertices.map((opt) => ({
+              cornerId: opt.corner_id,
+              anchorTileX: opt.anchor_tile_x,
+              anchorTileY: opt.anchor_tile_y,
+              cornerIndex: opt.corner_index,
+              xyz: { x: opt.x, y: opt.y, z: opt.z },
+              tiles: opt.tiles,
+              label: opt.label,
+            }))
+          );
+        }
+        if (result.vertex_adjacency && typeof result.vertex_adjacency === 'object') {
+          setVertexAdjacency(result.vertex_adjacency);
+        } else {
+          setVertexAdjacency({});
+        }
+      } else {
+        // Optimization model format
+        if (Array.isArray(result.vertices)) {
+          setAnalysisVertices(
+            result.vertices.map((opt) => ({
+              cornerId: opt.corner_id,
+              anchorTileX: opt.anchor_tile_x,
+              anchorTileY: opt.anchor_tile_y,
+              cornerIndex: opt.corner_index,
+              xyz: { x: opt.x, y: opt.y, z: opt.z },
+              tiles: opt.tiles,
+              label: opt.label,
+            }))
+          );
+        }
+        if (result.vertex_adjacency && typeof result.vertex_adjacency === 'object') {
+          setVertexAdjacency(result.vertex_adjacency);
+        }
+        
+        const sourceCandidates = Array.isArray(result.candidates) ? result.candidates : [];
 
-      // Store a larger ranked candidate list; we'll filter to top 5 available per player.
-      if (sourceCandidates.length > 0) {
-        setAnalysisCandidates(
-          sourceCandidates.map((opt, idx) => ({
-            globalRank: idx + 1,
-            cornerId: opt.corner_id,
-            anchorTileX: opt.anchor_tile_x,
-            anchorTileY: opt.anchor_tile_y,
-            cornerIndex: opt.corner_index,
-            xyz: { x: opt.x, y: opt.y, z: opt.z },
-            tiles: opt.tiles,
-            valueScore: opt.value_score,
-            probability: opt.probability,
-            diversity: opt.resource_diversity,
-            tileCount: opt.tile_count,
-            label: opt.label,
-          }))
-        );
+        // Store a larger ranked candidate list; we'll filter to top 5 available per player.
+        if (sourceCandidates.length > 0) {
+          setAnalysisCandidates(
+            sourceCandidates.map((opt, idx) => ({
+              globalRank: idx + 1,
+              cornerId: opt.corner_id,
+              anchorTileX: opt.anchor_tile_x,
+              anchorTileY: opt.anchor_tile_y,
+              cornerIndex: opt.corner_index,
+              xyz: { x: opt.x, y: opt.y, z: opt.z },
+              tiles: opt.tiles,
+              valueScore: opt.value_score,
+              probability: opt.probability,
+              diversity: opt.resource_diversity,
+              tileCount: opt.tile_count,
+              label: opt.label,
+              model_type: 'optimization'
+            }))
+          );
+        }
       }
       
     } catch (error) {
@@ -406,24 +475,51 @@ const BuildBoard = () => {
   const handleConfirmSettlement = () => {
     if (!selectedSettlement || placementComplete || !currentPlacingPlayer) return;
 
-    if (blockedCornerIds.has(selectedSettlement.cornerId)) {
-      alert('That location is too close to an existing settlement. Choose a vertex at least 2 away.');
-      return;
-    }
+    // Handle both historical and optimization model formats
+    if (selectedModel === 'historical') {
+      // Historical model now also has cornerId (but might also use xyz)
+      if (selectedSettlement.cornerId && blockedCornerIds.has(selectedSettlement.cornerId)) {
+        alert('That location is too close to an existing settlement. Choose a vertex at least 2 away.');
+        return;
+      }
 
-    setPlacedSettlements((prev) => ([
-      ...prev,
-      {
-        placementIndex,
-        player: currentPlacingPlayer,
-        cornerId: selectedSettlement.cornerId,
-        anchorTileX: selectedSettlement.anchorTileX,
-        anchorTileY: selectedSettlement.anchorTileY,
-        cornerIndex: selectedSettlement.cornerIndex,
-        xyz: selectedSettlement.xyz,
-        label: selectedSettlement.label,
-      },
-    ]));
+      setPlacedSettlements((prev) => ([
+        ...prev,
+        {
+          placementIndex,
+          player: currentPlacingPlayer,
+          cornerId: selectedSettlement.cornerId,
+          anchorTileX: selectedSettlement.anchorTileX,
+          anchorTileY: selectedSettlement.anchorTileY,
+          cornerIndex: selectedSettlement.cornerIndex,
+          xyz: selectedSettlement.xyz,
+          score: selectedSettlement.score,
+          confidence: selectedSettlement.confidence,
+          label: selectedSettlement.label,
+        },
+      ]));
+    } else {
+      // Optimization model format
+      if (blockedCornerIds.has(selectedSettlement.cornerId)) {
+        alert('That location is too close to an existing settlement. Choose a vertex at least 2 away.');
+        return;
+      }
+
+      setPlacedSettlements((prev) => ([
+        ...prev,
+        {
+          placementIndex,
+          player: currentPlacingPlayer,
+          cornerId: selectedSettlement.cornerId,
+          anchorTileX: selectedSettlement.anchorTileX,
+          anchorTileY: selectedSettlement.anchorTileY,
+          cornerIndex: selectedSettlement.cornerIndex,
+          xyz: selectedSettlement.xyz,
+          label: selectedSettlement.label,
+        },
+      ]));
+    }
+    
     setSelectedSettlement(null);
     setPlacementIndex((i) => i + 1);
   };
@@ -441,6 +537,10 @@ const BuildBoard = () => {
 
   return (
     <div className="build-board-wrapper">
+      <button className="btn-return-home" onClick={() => navigate('/')} title="Return to Home">
+        ← Home
+      </button>
+      
       <div className="board-section">
         {currentStep === 1 ? (
           <div className="step-header">
@@ -655,6 +755,32 @@ const BuildBoard = () => {
               </div>
             </div>
             
+            <div className="model-selector">
+              <label>Recommendation Model:</label>
+              <div className="model-options">
+                <label className="model-radio">
+                  <input
+                    type="radio"
+                    value="optimization"
+                    checked={selectedModel === 'optimization'}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    disabled={analyzing}
+                  />
+                  <span>Optimization (Value-Based)</span>
+                </label>
+                <label className="model-radio">
+                  <input
+                    type="radio"
+                    value="historical"
+                    checked={selectedModel === 'historical'}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    disabled={analyzing}
+                  />
+                  <span>Historical (ML-Based)</span>
+                </label>
+              </div>
+            </div>
+            
             <button 
               onClick={handleAnalyzeBoard}
               disabled={analyzing}
@@ -663,29 +789,57 @@ const BuildBoard = () => {
               {analyzing ? 'Analyzing...' : '🔍 Analyze Board'}
             </button>
             
+            {modelInfo && (
+              <div className="model-info">
+                <p className="model-type">Model: {selectedModel === 'optimization' ? 'Optimization' : 'Historical'}</p>
+                {selectedModel === 'historical' && modelInfo && (
+                  <div className="historical-info">
+                    <small>
+                      📊 Analyzed {modelInfo.games_analyzed} games • 
+                      {modelInfo.winning_settlements_analyzed} winning settlements • 
+                      {modelInfo.clusters_identified} patterns
+                    </small>
+                  </div>
+                )}
+              </div>
+            )}
+            
             {analysisResult && (
               <div className={`analysis-result ${analysisResult.error ? 'error' : 'success'}`}>
                 {analysisResult.error ? (
                   <p className="error-message">{analysisResult.error}</p>
                 ) : (
                   <div className="analysis-content">
-                    <h4>Analysis Complete!</h4>
+                    <h4>Analysis Complete! ({selectedModel === 'optimization' ? 'Optimization' : 'Historical'} Model)</h4>
                     {analysisCandidates.length > 0 && isUserTurn && !placementComplete && (
                       <div className="top-settlements">
                         <h5>Top 5 Locations</h5>
                         <div className="top-settlements-list">
                           {availableCandidates.map((opt) => (
-                            <div key={opt.cornerId} className="top-settlement-item">
+                            <div key={opt.cornerId || `${opt.xyz.x}-${opt.xyz.y}-${opt.xyz.z}`} className="top-settlement-item">
                               <div className="top-settlement-main">
                                 <div className="top-settlement-rank">#{opt.displayRank}</div>
                                 <div className="top-settlement-info">
                                   <div className="top-settlement-label">{opt.label}</div>
-                                  <div className="top-settlement-tiles">
-                                    {opt.tiles?.join(', ')}
-                                  </div>
-                                  <div className="top-settlement-meta">
-                                    Score: {opt.valueScore?.toFixed?.(4) ?? opt.valueScore} • Tiles: {opt.tileCount} • Diversity: {opt.diversity}
-                                  </div>
+                                  {opt.model_type === 'optimization' ? (
+                                    <>
+                                      <div className="top-settlement-tiles">
+                                        {opt.tiles?.join(', ')}
+                                      </div>
+                                      <div className="top-settlement-meta">
+                                        Score: {opt.valueScore?.toFixed?.(4) ?? opt.valueScore} • Tiles: {opt.tileCount} • Diversity: {opt.diversity}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div className="top-settlement-tiles">
+                                        {opt.resources?.join(', ') || 'No resources'}
+                                      </div>
+                                      <div className="top-settlement-meta">
+                                        Score: {opt.score?.toFixed?.(3) ?? opt.score} • Confidence: {(opt.confidence * 100).toFixed(0)}%
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                               <button
@@ -693,7 +847,7 @@ const BuildBoard = () => {
                                 onClick={() => handleAcceptSettlement(opt)}
                                 disabled={blockedCornerIds.has(opt.cornerId)}
                               >
-                                {selectedSettlement?.cornerId === opt.cornerId ? 'Selected' : 'Select'}
+                                {selectedSettlement?.cornerId === opt.cornerId || selectedSettlement?.xyz === opt.xyz ? 'Selected' : 'Select'}
                               </button>
                             </div>
                           ))}
@@ -792,7 +946,9 @@ const BuildTile = ({ tile, index, onClick }) => {
             <>
               <div className="resource-name">{tile.type}</div>
               {tile.diceNumber && tile.diceNumber !== 0 && (
-                <div className="dice-number">{tile.diceNumber}</div>
+                <div className={`dice-number ${[6, 8].includes(Number(tile.diceNumber)) ? 'red-number' : ''}`}>
+                  {tile.diceNumber}
+                </div>
               )}
             </>
           ) : (

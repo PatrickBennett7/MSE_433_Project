@@ -2,11 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { IoClose } from 'react-icons/io5';
 import './TileForm.css';
 
-const RESOURCE_TYPES = ['Desert', 'Wool', 'Grain', 'Forest', 'Ore', 'Brick'];
+const RESOURCE_NAME_ALIASES = {
+  Forest: 'Wood',
+  Wool: 'Sheep',
+  Grain: 'Wheat',
+};
+
+const normalizeResourceName = (resource) => {
+  if (!resource) return '';
+  const normalized = `${resource}`.trim();
+  return RESOURCE_NAME_ALIASES[normalized] || normalized;
+};
+
+const RESOURCE_TYPES = ['Desert', 'Sheep', 'Wheat', 'Wood', 'Ore', 'Brick'];
 const RESOURCE_LIMITS = {
-  'Forest': 4,
-  'Wool': 4,
-  'Grain': 4,
+  'Wood': 4,
+  'Sheep': 4,
+  'Wheat': 4,
   'Ore': 3,
   'Brick': 3,
   'Desert': 1,
@@ -34,7 +46,7 @@ const TileForm = ({
   resourceCounts,
   numberCounts,
 }) => {
-  const [resourceType, setResourceType] = useState(tile.type || 'Wool');
+  const [resourceType, setResourceType] = useState(normalizeResourceName(tile.type) || 'Sheep');
   const [diceNumber, setDiceNumber] = useState(tile.diceNumber || '6');
 
   useEffect(() => {

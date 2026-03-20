@@ -16,17 +16,36 @@ class CatanBoardAnalyzer:
     }
     
     # Resource desirability in 4v4 (normalize 0-10)
+    # Canonical Catan resources: Wheat, Sheep, Brick, Ore, Wood (+ Desert)
     RESOURCE_VALUE = {
         'Wheat': 10,    # Always needed for development & cities
         'Sheep': 9,     # Development cards, settlements
         'Brick': 8,     # Roads, cities
         'Ore': 9,       # Development cards, cities
         'Wood': 8,      # Roads, settlements
-        'Forest': 8,    # Alternative name for Wood
-        'Wool': 9,      # Alternative name for Sheep
-        'Grain': 10,    # Alternative name for Wheat
         'Desert': 0     # No production
     }
+
+    # Accept legacy/input aliases and normalize to canonical names.
+    RESOURCE_ALIASES = {
+        'Forest': 'Wood',
+        'Wool': 'Sheep',
+        'Grain': 'Wheat',
+    }
+
+    @classmethod
+    def normalize_resource(cls, resource: str) -> str:
+        """Normalize resource names to canonical Catan names."""
+        if resource is None:
+            return ''
+
+        raw = str(resource).strip()
+        if not raw or raw.lower() == 'nan':
+            return ''
+
+        # Keep standard title-casing for keys like 'wood', 'WOOD', etc.
+        normalized = raw.title()
+        return cls.RESOURCE_ALIASES.get(normalized, normalized)
     
     def __init__(self, csv_path: str):
         """Initialize analyzer with board data."""
@@ -49,14 +68,15 @@ class CatanBoardAnalyzer:
         """Parse tiles from CSV format."""
         tiles = []
         for idx, row in self.df.iterrows():
+            normalized_resource = self.normalize_resource(row['resource_type'])
             tile = {
                 'index': idx,
                 'x': int(row['x']),
                 'y': int(row['y']),
-                'resource': str(row['resource_type']).strip() if pd.notna(row['resource_type']) else '',
+                'resource': normalized_resource,
                 'number': int(row['dice_number']) if pd.notna(row['dice_number']) else 0
             }
-            if tile['resource'] and tile['resource'].lower() != 'nan':
+            if tile['resource']:
                 tiles.append(tile)
         return tiles
 
@@ -207,7 +227,8 @@ class CatanBoardAnalyzer:
         except (ValueError, TypeError):
             return 0
         
-        resource_val = self.RESOURCE_VALUE.get(resource, 0)
+        normalized_resource = self.normalize_resource(resource)
+        resource_val = self.RESOURCE_VALUE.get(normalized_resource, 0)
         prob_weight = self.PROBABILITY_WEIGHTS.get(number, 0)
         
         # Combined score: resource value * probability
