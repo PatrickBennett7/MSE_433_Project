@@ -155,7 +155,7 @@ async def _analyze_board_optimization(df: pd.DataFrame) -> dict:
             'x': int(rec['x']),
             'y': int(rec['y']),
             'z': int(rec['z']),
-            'value_score': float(rec['total_value']),
+            'value_score': float(rec['weighted_score']),
             'resource_diversity': int(rec['diversity']),
             'probability': float(rec['avg_probability']),
             'tiles': rec['tiles'],

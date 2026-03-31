@@ -16,14 +16,14 @@ class HistoricalResultsAnalyzer:
     - Win rates and frequencies
     """
 
-    # Canonical Catan resources with relative values
+    # Canonical Catan resources with empirical values
     RESOURCE_VALUE = {
-        'Wheat': 10,
-        'Sheep': 9,
-        'Brick': 8,
-        'Ore': 9,
-        'Wood': 8,
-        'Desert': 0
+        'Wheat': 1.350,    # Grain (empirical)
+        'Sheep': 0.760,    # Sheep (empirical)
+        'Brick': 0.781,    # Brick (empirical)
+        'Ore': 1.329,      # Ore (empirical)
+        'Wood': 0.781,     # Wood (empirical)
+        'Desert': 0        # No production
     }
 
     RESOURCE_ALIASES = {
@@ -291,6 +291,79 @@ class HistoricalResultsAnalyzer:
             'kmeans': kmeans
         }
 
+    def _calculate_cluster_bonus(self, x: int, y: int, z: int, 
+                                 adjacent: List[Dict]) -> float:
+        """
+        Calculate bonus based on how well this vertex matches the clusters.
+        Finds the best-matching cluster and returns its average win frequency.
+        
+        Returns:
+            Cluster bonus (0-1), higher if vertex matches high-performing clusters
+        """
+        if not self.vertex_clusters or 'kmeans' not in self.vertex_clusters:
+            return 0.0
+        
+        # Extract features for this vertex
+        resources = [self.normalize_resource(t['resource']) for t in adjacent]
+        resource_values = [self.RESOURCE_VALUE.get(r, 0) for r in resources]
+        avg_resource_value = np.mean(resource_values) if resource_values else 0
+        
+        # Resource diversity
+        unique_resources = len(set(resources))
+        diversity = unique_resources / 3.0
+        
+        # Dice reliability
+        dice_numbers = [int(t['dice']) for t in adjacent 
+                       if pd.notna(t['dice']) and int(t['dice']) > 0]
+        probability_weights = {
+            2: 1/36, 3: 2/36, 4: 3/36, 5: 4/36, 6: 5/36, 7: 6/36,
+            8: 5/36, 9: 4/36, 10: 3/36, 11: 2/36, 12: 1/36
+        }
+        if dice_numbers:
+            probabilities = [probability_weights.get(d, 0) for d in dice_numbers]
+            avg_prob = np.mean(probabilities) / max(probability_weights.values())
+        else:
+            avg_prob = 0
+        
+        # Create feature vector for this vertex
+        vertex_features = [avg_resource_value, diversity, avg_prob, 0]  # 0 for win frequency placeholder
+        
+        try:
+            # Normalize using the same scaler
+            scaler = self.vertex_clusters.get('scaler')
+            kmeans = self.vertex_clusters.get('kmeans')
+            
+            if scaler is None or kmeans is None:
+                return 0.0
+            
+            # Normalize features
+            normalized = scaler.transform([vertex_features])
+            
+            # Find distances to all cluster centers
+            distances = kmeans.transform(normalized)[0]
+            closest_cluster_idx = np.argmin(distances)
+            
+            # Get vertices in the closest cluster
+            clusters = self.vertex_clusters.get('clusters', {})
+            cluster_vertices = clusters.get(closest_cluster_idx, [])
+            
+            # Calculate average win frequency of vertices in this cluster
+            cluster_win_freqs = []
+            for cluster_vertex in cluster_vertices:
+                if cluster_vertex in self.vertex_stats:
+                    cluster_win_freqs.append(self.vertex_stats[cluster_vertex]['win_frequency'])
+            
+            if cluster_win_freqs:
+                max_freq = max([s['win_frequency'] for s in self.vertex_stats.values()], default=1)
+                cluster_bonus = np.mean(cluster_win_freqs) / max_freq
+                return min(1.0, cluster_bonus)
+            else:
+                return 0.0
+                
+        except Exception as e:
+            print(f"Error calculating cluster bonus: {e}")
+            return 0.0
+
     def score_vertex(self, anchor_x: int, anchor_y: int, corner_index: int, 
                      board_tiles: List[Dict]) -> float:
         """
@@ -335,21 +408,21 @@ class HistoricalResultsAnalyzer:
         if not adjacent:
             return 0.0
         
-        # Compute historical score
+        # Compute historical score (weights: 0.35 resource, 0.25 dice, 0.2 diversity, 0.05 history, 0.15 cluster)
         score = 0.0
         
-        # 1. Resource value (40%)
+        # 1. Resource value (35%)
         resources = [self.normalize_resource(t['resource']) for t in adjacent]
         resource_values = [self.RESOURCE_VALUE.get(r, 0) for r in resources]
         if resource_values:
-            score += 0.4 * (np.mean(resource_values) / 10.0)
+            score += 0.35 * (np.mean(resource_values) / 10.0)
         
         # 2. Resource diversity (20%)
         unique_resources = len(set(resources))
         diversity_bonus = unique_resources / 3.0
         score += 0.2 * diversity_bonus
         
-        # 3. Dice reliability (30%)
+        # 3. Dice reliability (25%)
         dice_numbers = [int(t['dice']) for t in adjacent 
                        if pd.notna(t['dice']) and int(t['dice']) > 0]
         if dice_numbers:
@@ -359,16 +432,20 @@ class HistoricalResultsAnalyzer:
             }
             probabilities = [probability_weights.get(d, 0) for d in dice_numbers]
             avg_prob = np.mean(probabilities)
-            score += 0.3 * (avg_prob / max(probability_weights.values()))
+            score += 0.25 * (avg_prob / max(probability_weights.values()))
         
-        # 4. Historical pattern (10%)
+        # 4. Historical pattern (5%)
         vertex_key = (x, y, z)
         if vertex_key in self.vertex_stats:
             max_freq = max([s['win_frequency'] for s in self.vertex_stats.values()], default=1)
             historical_score = self.vertex_stats[vertex_key]['win_frequency'] / max_freq
-            score += 0.1 * historical_score
+            score += 0.05 * historical_score
         else:
-            score += 0.05  # Small bonus for any valid position
+            score += 0.025  # Small bonus for any valid position
+        
+        # 5. Cluster matching bonus (15%)
+        cluster_bonus = self._calculate_cluster_bonus(x, y, z, adjacent)
+        score += 0.15 * cluster_bonus
         
         return min(1.0, score)
 

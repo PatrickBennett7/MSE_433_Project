@@ -15,15 +15,15 @@ class CatanBoardAnalyzer:
         8: 5/36, 9: 4/36, 10: 3/36, 11: 2/36, 12: 1/36
     }
     
-    # Resource desirability in 4v4 (normalize 0-10)
+    # Resource values based on empirical analysis
     # Canonical Catan resources: Wheat, Sheep, Brick, Ore, Wood (+ Desert)
     RESOURCE_VALUE = {
-        'Wheat': 10,    # Always needed for development & cities
-        'Sheep': 9,     # Development cards, settlements
-        'Brick': 8,     # Roads, cities
-        'Ore': 9,       # Development cards, cities
-        'Wood': 8,      # Roads, settlements
-        'Desert': 0     # No production
+        'Wheat': 1.350,    # Grain (empirical)
+        'Sheep': 0.760,    # Sheep (empirical)
+        'Brick': 0.781,    # Brick (empirical)
+        'Ore': 1.329,      # Ore (empirical)
+        'Wood': 0.781,     # Wood (empirical)
+        'Desert': 0        # No production
     }
 
     # Accept legacy/input aliases and normalize to canonical names.
@@ -31,6 +31,14 @@ class CatanBoardAnalyzer:
         'Forest': 'Wood',
         'Wool': 'Sheep',
         'Grain': 'Wheat',
+    }
+    
+    # Weighted optimization coefficients
+    # Diversity bonus (d_j) is weighted separately at 30%
+    # All other factors (value, probability, tile_count) combined at 70%
+    OPTIMIZATION_WEIGHTS = {
+        'resource_value': 0.7,  # 70% - Combined: resource value + probability + tile count
+        'diversity': 0.3,       # 30% - Diversity bonus (d_j)
     }
 
     @classmethod
@@ -236,8 +244,11 @@ class CatanBoardAnalyzer:
     
     def calculate_vertex_value(self, touching_tiles: List[Dict]) -> Dict:
         """
-        Calculate total value of a settlement at a vertex.
-        Takes the 3 tiles touching this vertex.
+        Calculate total value of a settlement at a vertex using weighted optimization.
+        Formula: Score = 0.7 * (Σ r_i * p_i) + 0.3 * (d_j / 3)
+        Where:
+          - r_i = resource value, p_i = probability
+          - d_j = diversity (count of unique resources), normalized to 0-1
         """
         if len(touching_tiles) < 2:  # Need at least 2 tiles (edges) or 3 (interior)
             return None
@@ -254,17 +265,30 @@ class CatanBoardAnalyzer:
                 numbers.append(tile['number'])
         
         total_value = sum(individual_values)
+        tile_count = len(touching_tiles)
         
         # Avoid division by zero
         avg_prob = np.mean([self.PROBABILITY_WEIGHTS.get(int(n), 0) for n in numbers if n > 0]) if numbers else 0
+        
+        # Diversity: count of unique resources, normalized to 0-1 (divide by max of 30)
+        diversity = len(set([t['resource'] for t in touching_tiles]))
+        diversity_normalized = diversity / 30.0
+        
+        # Weighted optimization score: 70% resource value + 30% normalized diversity
+        weighted_score = (
+            self.OPTIMIZATION_WEIGHTS['resource_value'] * total_value +
+            self.OPTIMIZATION_WEIGHTS['diversity'] * diversity_normalized
+        )
         
         return {
             'total_value': total_value,
             'individual_values': individual_values,
             'tiles': resources,
             'numbers': numbers,
-            'diversity': len(set([t['resource'] for t in touching_tiles])),
-            'avg_probability': avg_prob
+            'diversity': diversity,
+            'avg_probability': avg_prob,
+            'tile_count': tile_count,
+            'weighted_score': weighted_score,
         }
     
     def analyze_board(self) -> List[Dict]:
@@ -299,14 +323,9 @@ class CatanBoardAnalyzer:
                 }
             )
 
-        # Prefer true interior vertices (3 tiles) over edges (2) over corners (1)
+        # Sort by weighted optimization score (highest first)
         settlements.sort(
-            key=lambda s: (
-                -s["tile_count"],
-                -s["total_value"],
-                -s["diversity"],
-                -s["avg_probability"],
-            )
+            key=lambda s: -s["weighted_score"]
         )
 
         if settlements:

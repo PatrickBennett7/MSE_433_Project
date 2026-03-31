@@ -957,9 +957,9 @@
 
 .model-options {
   display: flex;
-  align-items: center;
-  gap: 2rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
 }
 
 .model-radio {
@@ -969,6 +969,8 @@
   cursor: pointer;
   color: #333;
   user-select: none;
+  margin: 0;
+  padding: 0;
 }
 
 .model-radio input[type="radio"] {
@@ -977,6 +979,8 @@
   height: 18px;
   accent-color: #667eea;
   margin: 0;
+  padding: 0;
+  flex-shrink: 0;
 }
 
 .model-radio input[type="radio"]:disabled {
@@ -987,7 +991,9 @@
 .model-radio span {
   font-weight: 500;
   font-size: 0.95rem;
-  line-height: 1.2;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
 }
 
 .model-radio input[type="radio"]:checked + span {
